@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"net"
+	"strings"
 
 	stdlog "log"
 
@@ -44,12 +45,26 @@ type server struct {
 
 	bufioPool *bufiopool.Pool
 	logger    log.Logger
+	addrCache *addrCacheResolver
 }
 
 var (
 	errNoAvailableUpstream = errors.New("no avaliable upstream")
 	errInvalidBufioPool    = errors.New("invalid bufio pool")
 )
+
+type addrCacheResolver struct {
+	cache    map[string]string
+	resolver socks5.DNSResolver
+}
+
+func (me addrCacheResolver) Resolve(ctx context.Context, name string) (context.Context, net.IP, error) {
+	c, ip, err := me.resolver.Resolve(ctx, name)
+	if err == nil {
+		me.cache[ip.String()] = name
+	}
+	return c, ip, err
+}
 
 func newServer(pool *bufiopool.Pool, logger log.Logger, httpProxyHost string, httpProxyPort uint16,
 	httpProxyUser, httpProxyPass, socks5ProxyAddr, socks5ProxyUser, socks5ProxyPass string) (*server, error) {
@@ -65,11 +80,13 @@ func newServer(pool *bufiopool.Pool, logger log.Logger, httpProxyHost string, ht
 		return nil, err
 	}
 	s.upstream = upstream
+	s.addrCache = &addrCacheResolver{cache: map[string]string{}, resolver: socks5.DNSResolver{}}
 
 	// set up socks server
 	conf := &socks5.Config{
-		Dial:   s.httpTunnelDialer,
-		Logger: stdlog.New(&stdLogWriter{socks5ProxyAddr, logger}, "", 0),
+		Dial:     s.httpTunnelDialer,
+		Logger:   stdlog.New(&stdLogWriter{socks5ProxyAddr, logger}, "", 0),
+		Resolver: s.addrCache,
 	}
 	if len(socks5ProxyUser) > 0 && len(socks5ProxyPass) > 0 {
 		creds := socks5.StaticCredentials{
@@ -99,6 +116,10 @@ func (s *server) listenAndServe() error {
 }
 
 func (s *server) httpTunnelDialer(ctx context.Context, network, addr string) (net.Conn, error) {
+	addrs := strings.Split(addr, ":")
+	if s := s.addrCache.cache[addrs[0]]; s != "" {
+		addr = s + ":" + addrs[1]
+	}
 	s.logger.Debug("http://"+s.upstream.HostWithPort(),
 		"tunnel to %s from socks5://%s", addr, s.socks5ProxyAddr)
 	if s.upstream == nil {
