@@ -43,9 +43,9 @@ func makeConfig(configPath string) *config {
 		fmt.Fprintf(os.Stderr, "fail to parse config file %s with error %s\n", configPath, err)
 		os.Exit(1)
 	}
-	if len(config.Log.Dir) == 0 {
-		fmt.Fprintf(os.Stderr, "no log path specifled\n")
-		os.Exit(1)
-	}
+	// if len(config.Log.Dir) == 0 {
+	// 	fmt.Fprintf(os.Stderr, "no log path specifled\n")
+	// 	os.Exit(1)
+	// }
 	return config
 }
