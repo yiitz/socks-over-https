@@ -117,11 +117,14 @@ func (s *server) listenAndServe() error {
 
 func (s *server) httpTunnelDialer(ctx context.Context, network, addr string) (net.Conn, error) {
 	addrs := strings.Split(addr, ":")
-	if s := s.addrCache.cache[addrs[0]]; s != "" {
-		addr = s + ":" + addrs[1]
+	if host := s.addrCache.cache[addrs[0]]; host != "" {
+		addr = host + ":" + addrs[1]
+		s.logger.Debug("http://"+s.upstream.HostWithPort(),
+			"tunnel to %s from socks5h://%s", addr, s.socks5ProxyAddr)
+	} else {
+		s.logger.Debug("http://"+s.upstream.HostWithPort(),
+			"tunnel to %s from socks5://%s", addr, s.socks5ProxyAddr)
 	}
-	s.logger.Debug("http://"+s.upstream.HostWithPort(),
-		"tunnel to %s from socks5://%s", addr, s.socks5ProxyAddr)
 	if s.upstream == nil {
 		return nil, errNoAvailableUpstream
 	}
